@@ -1,57 +1,104 @@
 pipeline {
-    agent any
+  agent any
 
-    environment {
-        DOCKER_IMAGE = "kanykei9595/netflix-clone"
-        
-        DOCKER = "/usr/local/bin/docker"   // Intel Mac
-        // DOCKER = "/opt/homebrew/bin/docker"  // Apple Silicon (M1/M2)
+  environment {
+    // ---- SETTINGS ----
+    GIT_URL       = 'https://github.com/Kanykei9595/Netflix-clone.git'
+    GIT_BRANCH    = 'main'
+    DOCKER_IMAGE  = 'kanykei0909/netflix-clone:latest'   // Docker Hub'дагы repo/name:tag
+    DOCKER_CONFIG = "${WORKSPACE}/.docker"               // Jenkins үчүн өзүнчө docker config
+    DOCKER        = '/usr/local/bin/docker'              // default (Intel)
+    KUBECTL       = '/usr/local/bin/kubectl'             // керек болсо жаңырт
+  }
+
+  options {
+    timestamps()
+  }
+
+  stages {
+    stage('Clone Repository') {
+      steps {
+        git branch: "${GIT_BRANCH}",
+            credentialsId: 'github-credentials',
+            url: "${GIT_URL}"
+      }
     }
 
-    stages {
-        stage('Clone Repository') {
-            steps {
-                git branch: 'main',
-                    credentialsId: 'github-credentials',
-                    url: 'https://github.com/Kanykei9595/Netflix-clone.git'
+    stage('Init Tool Paths') {
+      steps {
+        script {
+          // Docker жолун авто-табуу (Apple Silicon/Homebrew үчүн)
+          if (!fileExists(env.DOCKER)) {
+            if (fileExists('/opt/homebrew/bin/docker')) {
+              env.DOCKER = '/opt/homebrew/bin/docker'
             }
-        }
-
-        stage('Check Docker') {
-            steps {
-                sh '$DOCKER --version'
+          }
+          // kubectl да ушундай
+          if (!fileExists(env.KUBECTL)) {
+            if (fileExists('/opt/homebrew/bin/kubectl')) {
+              env.KUBECTL = '/opt/homebrew/bin/kubectl'
             }
+          }
         }
-
-        stage('Build Docker Image') {
-            steps {
-                sh '$DOCKER build -t $DOCKER_IMAGE:latest .'
-            }
-        }
-
-        stage('Run Tests') {
-            steps {
-                echo 'Running basic checks...'
-            }
-        }
-
-        stage('Push to Docker Hub') {
-            steps {
-                withCredentials([usernamePassword(credentialsId: 'dockerhub-login', usernameVariable: 'USER', passwordVariable: 'PASS')]) {
-                    sh """
-                      echo $PASS | $DOCKER login -u $USER --password-stdin
-                      $DOCKER push $DOCKER_IMAGE:latest
-                    """
-                }
-            }
-        }
-
-        stage('Deploy to Kubernetes') {
-            when { expression { return fileExists('Kubernetes/deployment.yml') } }
-            steps {
-                sh 'kubectl apply -f Kubernetes/deployment.yml'
-                sh 'kubectl apply -f Kubernetes/service.yml'
-            }
-        }
+        sh '''
+          echo "PATH=$PATH"
+          echo "Using DOCKER at: $DOCKER"
+          $DOCKER --version
+          if [ -x "$KUBECTL" ]; then $KUBECTL version --client || true; fi
+        '''
+      }
     }
+
+    stage('Docker Login (no helper)') {
+      steps {
+        withCredentials([usernamePassword(credentialsId: 'dockerhub-login', usernameVariable: 'USER', passwordVariable: 'PASS')]) {
+          sh '''
+            mkdir -p "$DOCKER_CONFIG"
+            # helper'сиз таза config.json
+            echo '{}' > "$DOCKER_CONFIG/config.json"
+            echo "$PASS" | $DOCKER login -u "$USER" --password-stdin
+          '''
+        }
+      }
+    }
+
+    stage('Build Docker Image') {
+      steps {
+        sh '$DOCKER build -t $DOCKER_IMAGE .'
+      }
+    }
+
+    stage('Basic Checks') {
+      steps {
+        sh '$DOCKER image ls | head -n 10'
+      }
+    }
+
+    stage('Push to Docker Hub') {
+      steps {
+        withCredentials([usernamePassword(credentialsId: 'dockerhub-login', usernameVariable: 'USER', passwordVariable: 'PASS')]) {
+          sh '''
+            echo "$PASS" | $DOCKER login -u "$USER" --password-stdin
+            $DOCKER push $DOCKER_IMAGE
+          '''
+        }
+      }
+    }
+
+    stage('Deploy to Kubernetes (if manifests exist)') {
+      when {
+        expression { return fileExists('Kubernetes/deployment.yml') && fileExists('Kubernetes/service.yml') }
+      }
+      steps {
+        sh '$KUBECTL apply -f Kubernetes/deployment.yml'
+        sh '$KUBECTL apply -f Kubernetes/service.yml'
+      }
+    }
+  }
+
+  post {
+    always {
+      echo "Build finished with status: ${currentBuild.currentResult}"
+    }
+  }
 }
