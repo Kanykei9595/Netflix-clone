@@ -3,6 +3,9 @@ pipeline {
 
     environment {
         DOCKER_IMAGE = "kanykei9595/netflix-clone"
+        
+        DOCKER = "/usr/local/bin/docker"   // Intel Mac
+        // DOCKER = "/opt/homebrew/bin/docker"  // Apple Silicon (M1/M2)
     }
 
     stages {
@@ -14,9 +17,15 @@ pipeline {
             }
         }
 
+        stage('Check Docker') {
+            steps {
+                sh '$DOCKER --version'
+            }
+        }
+
         stage('Build Docker Image') {
             steps {
-                sh 'docker build -t $DOCKER_IMAGE:latest .'
+                sh '$DOCKER build -t $DOCKER_IMAGE:latest .'
             }
         }
 
@@ -27,22 +36,19 @@ pipeline {
         }
 
         stage('Push to Docker Hub') {
-            environment {
-                DOCKERHUB_CREDENTIALS = credentials('dockerhub-login')
-            }
             steps {
                 withCredentials([usernamePassword(credentialsId: 'dockerhub-login', usernameVariable: 'USER', passwordVariable: 'PASS')]) {
                     sh """
-                    echo $PASS | docker login -u $USER --password-stdin
-                    docker push $DOCKER_IMAGE:latest
+                      echo $PASS | $DOCKER login -u $USER --password-stdin
+                      $DOCKER push $DOCKER_IMAGE:latest
                     """
                 }
             }
         }
 
         stage('Deploy to Kubernetes') {
+            when { expression { return fileExists('Kubernetes/deployment.yml') } }
             steps {
-                echo 'Deploying to Kubernetes...'
                 sh 'kubectl apply -f Kubernetes/deployment.yml'
                 sh 'kubectl apply -f Kubernetes/service.yml'
             }
