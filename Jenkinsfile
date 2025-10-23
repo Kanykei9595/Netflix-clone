@@ -50,18 +50,18 @@ pipeline {
       }
     }
 
-    stage('Build Docker Image') {
-      steps {
-        withCredentials([string(credentialsId: 'tmdb-api-key', variable: 'TMDB_V3_API_KEY')]) {
-          sh '''
-            echo "Building image with TMDB API key..."
-            $DOCKER build \
-              --build-arg TMDB_V3_API_KEY=$TMDB_V3_API_KEY \
-              -t $DOCKER_IMAGE .
-          '''
-        }
-      }
-    }
+   stage('Build Docker Image') {
+     steps {
+       withCredentials([string(credentialsId: 'tmdb-api-key', variable: 'TMDB_V3_API_KEY')]) {
+         sh '''
+           echo "Building image with TMDB API key..."
+           DOCKER_BUILDKIT=1 $DOCKER build \
+           --build-arg TMDB_V3_API_KEY=$TMDB_V3_API_KEY \
+           -t $DOCKER_IMAGE .
+         '''
+       }
+     }
+   }
 
     stage('Push to Docker Hub') {
       steps {
