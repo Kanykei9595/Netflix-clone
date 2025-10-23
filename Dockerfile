@@ -1,8 +1,12 @@
 FROM node:16.17.0-alpine AS builder
 WORKDIR /app
-RUN npm install -g yarn
+
+# yarn буга чейин образда бар (же corepack аркылуу жеткиликтүү)
+# RUN npm install -g yarn   # <-- МЫНДАЙ САПТЫ ӨЧҮР!
+
 COPY package.json yarn.lock ./
 RUN yarn install --frozen-lockfile
+
 COPY . .
 ARG TMDB_V3_API_KEY
 ENV VITE_APP_TMDB_V3_API_KEY=${TMDB_V3_API_KEY}
