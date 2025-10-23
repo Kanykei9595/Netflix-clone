@@ -17,11 +17,16 @@ pipeline {
             url: "${GIT_URL}"
       }
     }
-
+        
     stage('Docker Login') {
       steps {
         withCredentials([usernamePassword(credentialsId: 'dockerhub-login', usernameVariable: 'USER', passwordVariable: 'PASS')]) {
-          sh 'echo $PASS | $DOCKER login -u $USER --password-stdin'
+          sh '''
+            export DOCKER_CONFIG=$WORKSPACE/.docker
+            mkdir -p "$DOCKER_CONFIG"
+            echo '{}' > "$DOCKER_CONFIG/config.json"   # helper'сиз таза конфиг
+            echo "$PASS" | $DOCKER login -u "$USER" --password-stdin
+          '''
         }
       }
     }
@@ -29,12 +34,13 @@ pipeline {
     stage('Build & Push') {
       steps {
         sh '''
+          export DOCKER_CONFIG=$WORKSPACE/.docker     # ошол эле сессияны колдон
           $DOCKER build -t $DOCKER_IMAGE .
           $DOCKER push $DOCKER_IMAGE
         '''
       }
     }
-
+ 
     stage('Deploy to K8s') {
       when {
         expression { fileExists('Kubernetes/deployment.yml') && fileExists('Kubernetes/service.yml') }
