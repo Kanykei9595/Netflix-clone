@@ -62,18 +62,19 @@ pipeline {
       }
     }
 
-    stage('Build Docker Image') {
-      steps {
-        sh '$DOCKER build -t $DOCKER_IMAGE .'
-      }
-    }
-
-    stage('Basic Checks') {
-      steps {
-        sh '$DOCKER image ls | head -n 10'
-      }
-    }
-
+   stage('Build Docker Image') {
+     steps {
+    // TMDB API ключ Jenkins credentials’тен алынат
+       withCredentials([string(credentialsId: 'tmdb-api-key', variable: 'TMDB_V3_API_KEY')]) {
+         sh '''
+           echo "Building Docker image with TMDB API key..."
+           $DOCKER build \
+             --build-arg TMDB_V3_API_KEY=$TMDB_V3_API_KEY \
+             -t $DOCKER_IMAGE .
+         '''
+       }
+     }
+   }
     stage('Push to Docker Hub') {
       steps {
         withCredentials([usernamePassword(credentialsId: 'dockerhub-login', usernameVariable: 'USER', passwordVariable: 'PASS')]) {
