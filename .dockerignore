@@ -1,3 +1,6 @@
-.*
-build
+.git
 node_modules
+dist
+Dockerfile
+Jenkinsfile
+*.log
