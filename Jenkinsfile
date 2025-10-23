@@ -2,18 +2,15 @@ pipeline {
   agent any
 
   environment {
-    // ---- SETTINGS ----
     GIT_URL       = 'https://github.com/Kanykei9595/Netflix-clone.git'
     GIT_BRANCH    = 'main'
-    DOCKER_IMAGE  = 'kanykei0909/netflix-clone:latest'   // Docker Hub'дагы repo/name:tag
-    DOCKER_CONFIG = "${WORKSPACE}/.docker"               // Jenkins үчүн өзүнчө docker config
-    DOCKER        = '/usr/local/bin/docker'              // default (Intel)
-    KUBECTL       = '/usr/local/bin/kubectl'             // керек болсо жаңырт
+    DOCKER_IMAGE  = 'kanykei0909/netflix-clone:latest'
+    DOCKER_CONFIG = "${WORKSPACE}/.docker"
+    DOCKER        = '/usr/local/bin/docker'
+    KUBECTL       = '/usr/local/bin/kubectl'
   }
 
-  options {
-    timestamps()
-  }
+  options { timestamps() }
 
   stages {
     stage('Clone Repository') {
@@ -27,24 +24,16 @@ pipeline {
     stage('Init Tool Paths') {
       steps {
         script {
-          // Docker жолун авто-табуу (Apple Silicon/Homebrew үчүн)
-          if (!fileExists(env.DOCKER)) {
-            if (fileExists('/opt/homebrew/bin/docker')) {
-              env.DOCKER = '/opt/homebrew/bin/docker'
-            }
+          if (!fileExists(env.DOCKER) && fileExists('/opt/homebrew/bin/docker')) {
+            env.DOCKER = '/opt/homebrew/bin/docker'
           }
-          // kubectl да ушундай
-          if (!fileExists(env.KUBECTL)) {
-            if (fileExists('/opt/homebrew/bin/kubectl')) {
-              env.KUBECTL = '/opt/homebrew/bin/kubectl'
-            }
+          if (!fileExists(env.KUBECTL) && fileExists('/opt/homebrew/bin/kubectl')) {
+            env.KUBECTL = '/opt/homebrew/bin/kubectl'
           }
         }
         sh '''
-          echo "PATH=$PATH"
-          echo "Using DOCKER at: $DOCKER"
+          echo "Using Docker: $DOCKER"
           $DOCKER --version
-          if [ -x "$KUBECTL" ]; then $KUBECTL version --client || true; fi
         '''
       }
     }
@@ -54,7 +43,6 @@ pipeline {
         withCredentials([usernamePassword(credentialsId: 'dockerhub-login', usernameVariable: 'USER', passwordVariable: 'PASS')]) {
           sh '''
             mkdir -p "$DOCKER_CONFIG"
-            # helper'сиз таза config.json
             echo '{}' > "$DOCKER_CONFIG/config.json"
             echo "$PASS" | $DOCKER login -u "$USER" --password-stdin
           '''
@@ -62,19 +50,19 @@ pipeline {
       }
     }
 
-   stage('Build Docker Image') {
-     steps {
-    // TMDB API ключ Jenkins credentials’тен алынат
-       withCredentials([string(credentialsId: 'tmdb-api-key', variable: 'TMDB_V3_API_KEY')]) {
-         sh '''
-           echo "Building Docker image with TMDB API key..."
-           $DOCKER build \
-             --build-arg TMDB_V3_API_KEY=$TMDB_V3_API_KEY \
-             -t $DOCKER_IMAGE .
-         '''
-       }
-     }
-   }
+    stage('Build Docker Image') {
+      steps {
+        withCredentials([string(credentialsId: 'tmdb-api-key', variable: 'TMDB_V3_API_KEY')]) {
+          sh '''
+            echo "Building image with TMDB API key..."
+            $DOCKER build \
+              --build-arg TMDB_V3_API_KEY=$TMDB_V3_API_KEY \
+              -t $DOCKER_IMAGE .
+          '''
+        }
+      }
+    }
+
     stage('Push to Docker Hub') {
       steps {
         withCredentials([usernamePassword(credentialsId: 'dockerhub-login', usernameVariable: 'USER', passwordVariable: 'PASS')]) {
@@ -86,7 +74,7 @@ pipeline {
       }
     }
 
-    stage('Deploy to Kubernetes (if manifests exist)') {
+    stage('Deploy to Kubernetes') {
       when {
         expression { return fileExists('Kubernetes/deployment.yml') && fileExists('Kubernetes/service.yml') }
       }
